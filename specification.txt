@@ -1,0 +1,390 @@
+2.1.  The ChaCha Quarter Round
+
+   The basic operation of the ChaCha algorithm is the quarter round.  It
+   operates on four 32-bit unsigned integers, denoted a, b, c, and d.
+   The operation is as follows (in C-like notation):
+
+   1.  a += b; d ^= a; d <<<= 16;
+   2.  c += d; b ^= c; b <<<= 12;
+   3.  a += b; d ^= a; d <<<= 8;
+   4.  c += d; b ^= c; b <<<= 7;
+
+   Where "+" denotes integer addition modulo 2^32, "^" denotes a bitwise
+   Exclusive OR (XOR), and "<<< n" denotes an n-bit left rotation
+   (towards the high bits).
+
+   For example, let's see the add, XOR, and roll operations from the
+   fourth line with sample numbers:
+
+   o  a = 0x11111111
+   o  b = 0x01020304
+   o  c = 0x77777777
+   o  d = 0x01234567
+   o  c = c + d = 0x77777777 + 0x01234567 = 0x789abcde
+   o  b = b ^ c = 0x01020304 ^ 0x789abcde = 0x7998bfda
+   o  b = b <<< 7 = 0x7998bfda <<< 7 = 0xcc5fed3c
+
+2.1.1.  Test Vector for the ChaCha Quarter Round
+
+   For a test vector, we will use the same numbers as in the example,
+   adding something random for c.
+
+   o  a = 0x11111111
+   o  b = 0x01020304
+   o  c = 0x9b8d6f43
+   o  d = 0x01234567
+
+   After running a Quarter Round on these four numbers, we get these:
+
+   o  a = 0xea2a92f4
+   o  b = 0xcb1cf8ce
+   o  c = 0x4581472e
+   o  d = 0x5881c4bb
+
+2.2.  A Quarter Round on the ChaCha State
+
+   The ChaCha state does not have four integer numbers: it has 16.  So
+   the quarter-round operation works on only four of them -- hence the
+   name.  Each quarter round operates on four predetermined numbers in
+   the ChaCha state.  We will denote by QUARTERROUND(x,y,z,w) a quarter-
+   round operation on the numbers at indices x, y, z, and w of the
+   ChaCha state when viewed as a vector.  For example, if we apply
+   QUARTERROUND(1,5,9,13) to a state, this means running the quarter-
+   round operation on the elements marked with an asterisk, while
+   leaving the others alone:
+
+      0  *a   2   3
+      4  *b   6   7
+      8  *c  10  11
+     12  *d  14  15
+
+   Note that this run of quarter round is part of what is called a
+   "column round".
+
+2.2.1.  Test Vector for the Quarter Round on the ChaCha State
+
+   For a test vector, we will use a ChaCha state that was generated
+   randomly:
+
+   Sample ChaCha State
+
+       879531e0  c5ecf37d  516461b1  c9a62f8a
+       44c20ef3  3390af7f  d9fc690b  2a5f714c
+       53372767  b00a5631  974c541a  359e9963
+       5c971061  3d631689  2098d9d6  91dbd320
+
+   We will apply the QUARTERROUND(2,7,8,13) operation to this state.
+   For obvious reasons, this one is part of what is called a "diagonal
+   round":
+
+   After applying QUARTERROUND(2,7,8,13)
+
+       879531e0  c5ecf37d *bdb886dc  c9a62f8a
+       44c20ef3  3390af7f  d9fc690b *cfacafd2
+      *e46bea80  b00a5631  974c541a  359e9963
+       5c971061 *ccc07c79  2098d9d6  91dbd320
+
+   Note that only the numbers in positions 2, 7, 8, and 13 changed.
+
+2.3.  The ChaCha20 Block Function
+
+   The ChaCha block function transforms a ChaCha state by running
+   multiple quarter rounds.
+
+   The inputs to ChaCha20 are:
+
+   o  A 256-bit key, treated as a concatenation of eight 32-bit little-
+      endian integers.
+
+   o  A 96-bit nonce, treated as a concatenation of three 32-bit little-
+      endian integers.
+
+   o  A 32-bit block count parameter, treated as a 32-bit little-endian
+      integer.
+
+   The output is 64 random-looking bytes.
+
+   The ChaCha algorithm described here uses a 256-bit key.  The original
+   algorithm also specified 128-bit keys and 8- and 12-round variants,
+   but these are out of scope for this document.  In this section, we
+   describe the ChaCha block function.
+
+   Note also that the original ChaCha had a 64-bit nonce and 64-bit
+   block count.  We have modified this here to be more consistent with
+   recommendations in Section 3.2 of [RFC5116].  This limits the use of
+   a single (key,nonce) combination to 2^32 blocks, or 256 GB, but that
+   is enough for most uses.  In cases where a single key is used by
+   multiple senders, it is important to make sure that they don't use
+   the same nonces.  This can be assured by partitioning the nonce space
+   so that the first 32 bits are unique per sender, while the other 64
+   bits come from a counter.
+
+   The ChaCha20 state is initialized as follows:
+
+   o  The first four words (0-3) are constants: 0x61707865, 0x3320646e,
+      0x79622d32, 0x6b206574.
+
+   o  The next eight words (4-11) are taken from the 256-bit key by
+      reading the bytes in little-endian order, in 4-byte chunks.
+
+   o  Word 12 is a block counter.  Since each block is 64-byte, a 32-bit
+      word is enough for 256 gigabytes of data.
+
+   o  Words 13-15 are a nonce, which should not be repeated for the same
+      key.  The 13th word is the first 32 bits of the input nonce taken
+      as a little-endian integer, while the 15th word is the last 32
+      bits.
+
+       cccccccc  cccccccc  cccccccc  cccccccc
+       kkkkkkkk  kkkkkkkk  kkkkkkkk  kkkkkkkk
+       kkkkkkkk  kkkkkkkk  kkkkkkkk  kkkkkkkk
+       bbbbbbbb  nnnnnnnn  nnnnnnnn  nnnnnnnn
+
+   c=constant k=key b=blockcount n=nonce
+
+   ChaCha20 runs 20 rounds, alternating between "column rounds" and
+   "diagonal rounds".  Each round consists of four quarter-rounds, and
+   they are run as follows.  Quarter rounds 1-4 are part of a "column"
+   round, while 5-8 are part of a "diagonal" round:
+
+   1.  QUARTERROUND ( 0, 4, 8,12)
+   2.  QUARTERROUND ( 1, 5, 9,13)
+   3.  QUARTERROUND ( 2, 6,10,14)
+   4.  QUARTERROUND ( 3, 7,11,15)
+   5.  QUARTERROUND ( 0, 5,10,15)
+   6.  QUARTERROUND ( 1, 6,11,12)
+   7.  QUARTERROUND ( 2, 7, 8,13)
+   8.  QUARTERROUND ( 3, 4, 9,14)
+
+   At the end of 20 rounds (or 10 iterations of the above list), we add
+   the original input words to the output words, and serialize the
+   result by sequencing the words one-by-one in little-endian order.
+
+   Note: "addition" in the above paragraph is done modulo 2^32.  In some
+   machine languages, this is called carryless addition on a 32-bit
+   word.
+
+2.3.1.  The ChaCha20 Block Function in Pseudocode
+
+   Note: This section and a few others contain pseudocode for the
+   algorithm explained in a previous section.  Every effort was made for
+   the pseudocode to accurately reflect the algorithm as described in
+   the preceding section.  If a conflict is still present, the textual
+   explanation and the test vectors are normative.
+
+      inner_block (state):
+         Qround(state, 0, 4, 8,12)
+         Qround(state, 1, 5, 9,13)
+         Qround(state, 2, 6,10,14)
+         Qround(state, 3, 7,11,15)
+         Qround(state, 0, 5,10,15)
+         Qround(state, 1, 6,11,12)
+         Qround(state, 2, 7, 8,13)
+         Qround(state, 3, 4, 9,14)
+         end
+
+      chacha20_block(key, counter, nonce):
+         state = constants | key | counter | nonce
+         working_state = state
+         for i=1 upto 10
+            inner_block(working_state)
+            end
+         state += working_state
+         return serialize(state)
+         end
+
+2.3.2.  Test Vector for the ChaCha20 Block Function
+
+   For a test vector, we will use the following inputs to the ChaCha20
+   block function:
+
+   o  Key = 00:01:02:03:04:05:06:07:08:09:0a:0b:0c:0d:0e:0f:10:11:12:13:
+      14:15:16:17:18:19:1a:1b:1c:1d:1e:1f.  The key is a sequence of
+      octets with no particular structure before we copy it into the
+      ChaCha state.
+
+   o  Nonce = (00:00:00:09:00:00:00:4a:00:00:00:00)
+
+   o  Block Count = 1.
+
+   After setting up the ChaCha state, it looks like this:
+
+   ChaCha state with the key setup.
+
+       61707865  3320646e  79622d32  6b206574
+       03020100  07060504  0b0a0908  0f0e0d0c
+       13121110  17161514  1b1a1918  1f1e1d1c
+       00000001  09000000  4a000000  00000000
+
+   After running 20 rounds (10 column rounds interleaved with 10
+   "diagonal rounds"), the ChaCha state looks like this:
+
+   ChaCha state after 20 rounds
+
+       837778ab  e238d763  a67ae21e  5950bb2f
+       c4f2d0c7  fc62bb2f  8fa018fc  3f5ec7b7
+       335271c2  f29489f3  eabda8fc  82e46ebd
+       d19c12b4  b04e16de  9e83d0cb  4e3c50a2
+
+   Finally, we add the original state to the result (simple vector or
+   matrix addition), giving this:
+
+   ChaCha state at the end of the ChaCha20 operation
+
+       e4e7f110  15593bd1  1fdd0f50  c47120a3
+       c7f4d1c7  0368c033  9aaa2204  4e6cd4c3
+       466482d2  09aa9f07  05d7c214  a2028bd9
+       d19c12b5  b94e16de  e883d0cb  4e3c50a2
+
+   After we serialize the state, we get this:
+
+  Serialized Block:
+  000  10 f1 e7 e4 d1 3b 59 15 50 0f dd 1f a3 20 71 c4  .....;Y.P.... q.
+  016  c7 d1 f4 c7 33 c0 68 03 04 22 aa 9a c3 d4 6c 4e  ....3.h.."....lN
+  032  d2 82 64 46 07 9f aa 09 14 c2 d7 05 d9 8b 02 a2  ..dF............
+  048  b5 12 9c d1 de 16 4e b9 cb d0 83 e8 a2 50 3c 4e  ......N......P<N
+
+2.4.  The ChaCha20 Encryption Algorithm
+
+   ChaCha20 is a stream cipher designed by D. J. Bernstein.  It is a
+   refinement of the Salsa20 algorithm, and it uses a 256-bit key.
+
+   ChaCha20 successively calls the ChaCha20 block function, with the
+   same key and nonce, and with successively increasing block counter
+   parameters.  ChaCha20 then serializes the resulting state by writing
+   the numbers in little-endian order, creating a keystream block.
+
+   Concatenating the keystream blocks from the successive blocks forms a
+   keystream.  The ChaCha20 function then performs an XOR of this
+   keystream with the plaintext.  Alternatively, each keystream block
+   can be XORed with a plaintext block before proceeding to create the
+   next block, saving some memory.  There is no requirement for the
+   plaintext to be an integral multiple of 512 bits.  If there is extra
+   keystream from the last block, it is discarded.  Specific protocols
+   MAY require that the plaintext and ciphertext have certain length.
+   Such protocols need to specify how the plaintext is padded and how
+   much padding it receives.
+
+   The inputs to ChaCha20 are:
+
+   o  A 256-bit key
+
+   o  A 32-bit initial counter.  This can be set to any number, but will
+      usually be zero or one.  It makes sense to use one if we use the
+      zero block for something else, such as generating a one-time
+      authenticator key as part of an AEAD algorithm.
+
+   o  A 96-bit nonce.  In some protocols, this is known as the
+      Initialization Vector.
+
+   o  An arbitrary-length plaintext
+
+   The output is an encrypted message, or "ciphertext", of the same
+   length.
+
+
+   Decryption is done in the same way.  The ChaCha20 block function is
+   used to expand the key into a keystream, which is XORed with the
+   ciphertext giving back the plaintext.
+
+2.4.1.  The ChaCha20 Encryption Algorithm in Pseudocode
+
+     chacha20_encrypt(key, counter, nonce, plaintext):
+        for j = 0 upto floor(len(plaintext)/64)-1
+           key_stream = chacha20_block(key, counter+j, nonce)
+           block = plaintext[(j*64)..(j*64+63)]
+           encrypted_message +=  block ^ key_stream
+           end
+        if ((len(plaintext) % 64) != 0)
+           j = floor(len(plaintext)/64)
+           key_stream = chacha20_block(key, counter+j, nonce)
+           block = plaintext[(j*64)..len(plaintext)-1]
+           encrypted_message += (block^key_stream)[0..len(plaintext)%64]
+           end
+        return encrypted_message
+        end
+
+2.4.2.  Example and Test Vector for the ChaCha20 Cipher
+
+   For a test vector, we will use the following inputs to the ChaCha20
+   block function:
+
+   o  Key = 00:01:02:03:04:05:06:07:08:09:0a:0b:0c:0d:0e:0f:10:11:12:13:
+      14:15:16:17:18:19:1a:1b:1c:1d:1e:1f.
+
+   o  Nonce = (00:00:00:00:00:00:00:4a:00:00:00:00).
+
+   o  Initial Counter = 1.
+
+   We use the following for the plaintext.  It was chosen to be long
+   enough to require more than one block, but not so long that it would
+   make this example cumbersome (so, less than 3 blocks):
+
+  Plaintext Sunscreen:
+  000  4c 61 64 69 65 73 20 61 6e 64 20 47 65 6e 74 6c  Ladies and Gentl
+  016  65 6d 65 6e 20 6f 66 20 74 68 65 20 63 6c 61 73  emen of the clas
+  032  73 20 6f 66 20 27 39 39 3a 20 49 66 20 49 20 63  s of '99: If I c
+  048  6f 75 6c 64 20 6f 66 66 65 72 20 79 6f 75 20 6f  ould offer you o
+  064  6e 6c 79 20 6f 6e 65 20 74 69 70 20 66 6f 72 20  nly one tip for
+  080  74 68 65 20 66 75 74 75 72 65 2c 20 73 75 6e 73  the future, suns
+  096  63 72 65 65 6e 20 77 6f 75 6c 64 20 62 65 20 69  creen would be i
+  112  74 2e                                            t.
+
+   The following figure shows four ChaCha state matrices:
+
+   1.  First block as it is set up.
+
+   2.  Second block as it is set up.  Note that these blocks are only
+       two bits apart -- only the counter in position 12 is different.
+
+   3.  Third block is the first block after the ChaCha20 block
+       operation.
+
+   4.  Final block is the second block after the ChaCha20 block
+       operation was applied.
+
+   After that, we show the keystream.
+
+   First block setup:
+       61707865  3320646e  79622d32  6b206574
+       03020100  07060504  0b0a0908  0f0e0d0c
+       13121110  17161514  1b1a1918  1f1e1d1c
+       00000001  00000000  4a000000  00000000
+
+   Second block setup:
+       61707865  3320646e  79622d32  6b206574
+       03020100  07060504  0b0a0908  0f0e0d0c
+       13121110  17161514  1b1a1918  1f1e1d1c
+       00000002  00000000  4a000000  00000000
+
+   First block after block operation:
+       f3514f22  e1d91b40  6f27de2f  ed1d63b8
+       821f138c  e2062c3d  ecca4f7e  78cff39e
+       a30a3b8a  920a6072  cd7479b5  34932bed
+       40ba4c79  cd343ec6  4c2c21ea  b7417df0
+
+   Second block after block operation:
+       9f74a669  410f633f  28feca22  7ec44dec
+       6d34d426  738cb970  3ac5e9f3  45590cc4
+       da6e8b39  892c831a  cdea67c1  2b7e1d90
+       037463f3  a11a2073  e8bcfb88  edc49139
+
+   Keystream:
+   22:4f:51:f3:40:1b:d9:e1:2f:de:27:6f:b8:63:1d:ed:8c:13:1f:82:3d:2c:06
+   e2:7e:4f:ca:ec:9e:f3:cf:78:8a:3b:0a:a3:72:60:0a:92:b5:79:74:cd:ed:2b
+   93:34:79:4c:ba:40:c6:3e:34:cd:ea:21:2c:4c:f0:7d:41:b7:69:a6:74:9f:3f
+   63:0f:41:22:ca:fe:28:ec:4d:c4:7e:26:d4:34:6d:70:b9:8c:73:f3:e9:c5:3a
+   c4:0c:59:45:39:8b:6e:da:1a:83:2c:89:c1:67:ea:cd:90:1d:7e:2b:f3:63
+
+   Finally, we XOR the keystream with the plaintext, yielding the
+   ciphertext:
+
+  Ciphertext Sunscreen:
+  000  6e 2e 35 9a 25 68 f9 80 41 ba 07 28 dd 0d 69 81  n.5.%h..A..(..i.
+  016  e9 7e 7a ec 1d 43 60 c2 0a 27 af cc fd 9f ae 0b  .~z..C`..'......
+  032  f9 1b 65 c5 52 47 33 ab 8f 59 3d ab cd 62 b3 57  ..e.RG3..Y=..b.W
+  048  16 39 d6 24 e6 51 52 ab 8f 53 0c 35 9f 08 61 d8  .9.$.QR..S.5..a.
+  064  07 ca 0d bf 50 0d 6a 61 56 a3 8e 08 8a 22 b6 5e  ....P.jaV....".^
+  080  52 bc 51 4d 16 cc f8 06 81 8c e9 1a b7 79 37 36  R.QM.........y76
+  096  5a f9 0b bf 74 a3 5b e6 b4 0b 8e ed f2 78 5e 42  Z...t.[......x^B
+  112  87 4d                                            .M
