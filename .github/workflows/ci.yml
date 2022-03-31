@@ -1,0 +1,43 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install ubuntu dependencies
+        run: |
+          wget http://mirrors.kernel.org/ubuntu/pool/universe/c/catch2/catch2_2.13.4-2_amd64.deb
+          sudo dpkg -i catch2_2.13.4-2_amd64.deb
+          sudo apt-get install gcc-11 g++-11 libstdc++-11-dev lcov
+          sudo update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-11 800
+      - uses: actions/checkout@v3
+      - name: Run tests
+        run: |
+          make build/tests
+          ./build/tests
+      - name: Get coverage
+        run: make build/coverage
+      - name: Upload coverage
+        uses: codecov/codecov-action@v2
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Prepare deployment
+        run: |
+          mv build/coverage docs/coverage
+      - name: Push coverage report
+        run: |
+          git config --local user.email "github-actions@github.com"
+          git config --local user.name "github-actions"
+          git branch -D gh-pages || echo "Branch does not exist"
+          git checkout --orphan gh-pages
+          git rm --cached $(git ls-files)
+          git add docs/*
+          git commit -m "Update docs"
+          git push -f origin gh-pages

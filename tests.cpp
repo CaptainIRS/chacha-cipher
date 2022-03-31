@@ -174,15 +174,7 @@ TEST_CASE("ChaCha Utils", "[chacha]") {
         std::string a = "\x01\x02\x03\x04";
         std::string b = "\x05\x06\x07\x08";
 
-        for (int i = 0; i < 4; i++) {
-            std::cout << std::hex << (int)a[i] << " " << (int)b[i] << std::endl;
-        }
-
         std::string xor_string = xor_strings(a, b);
-        for (int i = 0; i < xor_string.size(); i++) {
-            std::cout << std::hex << (int)xor_string[i] << " ";
-        }
-        std::cout << std::endl;
 
         std::string expected_xor_string = "\x04\x04\x04\x0c";
         REQUIRE(xor_string == expected_xor_string);
